@@ -10,6 +10,7 @@ var bcrypt = require('bcrypt');
 var salt = 10;
 var jwt = require('jsonwebtoken');
 var config = require('./config')
+var user = { name: 'Jose Santana' };
 // var token = jwt.sign(<user>, <secret>);
 // Twilio Credentials
 const accountSid = 'ACb5afde43ef6ef78a730ef57c3ee13eed';
@@ -30,7 +31,8 @@ mongoose.connect('mongodb://joses50270:santana1522@ds257808.mlab.com:57808/sealp
         throw err
     } else {
         console.log('connected to mlab')
-        commentCollection = db.collection("comments")
+        commentCollection = db.collection("comments"),
+        blogCollection = db.collection("blogs")
     }
 });
 mongoose.connection.on('error', function (error) {
@@ -93,25 +95,41 @@ var userSchema = new Schema({
 var User = mongoose.model('user', userSchema);
 
 var commentSchema = new Schema({
-    firstname: {
+    content: {
+        type: String,
+    },
+    timeStamp: {
+        type: Date,
+        default: Date.now()
+    },
+    discussionId: {
+        type: String,
+    },
+   child: Boolean
+});
+
+var CommentForm = mongoose.model('comment', commentSchema);
+
+var blogSchema = new Schema ({
+    content: {
         type: String,
         required: true
     },
-    lastname: {
+    author: {
         type: String,
-        required: true
+        default: "Jose Santana"
     },
-    msg: {
+    id: {
         type: String,
         required: true
     },
     timeStamp: {
         type: Date,
-        default: Date.now()
+        default: Date.now()    
     }
-});
+})
 
-var CommentForm = mongoose.model('comment', commentSchema);
+var BlogForm = mongoose.model('blog', blogSchema);
 
 var xssService = {
     sanitize: function (req, res, next) {
@@ -127,7 +145,6 @@ var xssService = {
     }
 
 }
-
 
 var bcryptService = {
     hash: function (req, res, next) {
@@ -167,54 +184,43 @@ app.post('/admin/register', xssService.sanitize, bcryptService.hash, function (r
 
 
 
-app.post('/login', function (req, res) {
-    // User.findOne({ 'email': req.body.email }, 'password', function (err, product) {   
-    //     if (err) throw err;
-    //     if (product === null) {
-    //         res.status(200).send({
-    //             type: false,
-    //             data: 'User does not exist'
-    //         })
-    //     } else {
-    //         var passwordIsValid = bcrypt.compare(req.body.password, product.password, function (err, resp) {
-    //             console.log(product.password)
-    //             if (err) throw err;
-    //             console.log(resp)
+app.post('/admin/login', function (req, res) {
+    User.findOne({ 'email': req.body.email }, 'password', function (err, product) {
+        if (err) throw err;
+        if (product === null) {
+            res.status(200).send({
+                type: false,
+                data: 'Email does not exist'
+            })
 
-    //         if (!passwordIsValid) return res.status(401).send({ auth: false, token: null});
-    //         var token = jwt.sign({ id: User._id}, config.secret,{
-    //             expiresIn: 86400
-    //         });
-    //         res.status(200).send({ auth: true, token: token });
-    //             if (resp) {
-    //                 res.status(200).send({
-    //                     type: true,
-    //                     data: 'User Logged In!'
-    //                 })
-    //             } else {
-    //                 res.status(200).send({
-    //                     type: false,
-    //                     data: 'Password is incorrect'
-    //                 })
-    //             } 
-    //         })
-    //         if (err) throw err;
-    //         console.log(product)
-    //     }
+        } else {
+            bcrypt.compare(req.body.password, product.password, function (err, resp) {
+                console.log(product.password)
+                if (err) throw err;
+                console.log(resp)
+                if (resp) {
+                    const token = jwt.sign({ user }, 'secret_key', { expiresIn: '86400s' });
+                    console.log("user's token:", token);
 
-    // })
-    User.findOne({ email: req.body.email }, function (err, user) {
-        if (err) return res.status(500).send('Error on the server.');
-        if (!user) return res.status(404).send('No user found.');
-        var passwordIsValid = bcrypt.compareSync(req.body.password, user.password);
-        if (!passwordIsValid) return res.status(401).send({ auth: false, token: null });
-        var token = jwt.sign({ id: user._id }, config.secret, {
-            expiresIn: 86400 // expires in 24 hours
-        });
+                    res.status(200).send({
+                        type: true,
+                        data: 'Kodak Wack...oh btw welcome',
+                        token: token
+                    })
+                } else {
+                    res.status(200).send({
+                        type: false,
+                        data: 'Incorrect Password'
+                    })
 
-        res.status(200).send({ auth: true, token: token });
-    });
-})
+                }
+            })
+            if (err) throw err;
+            console.log(product)
+
+        }
+    })
+});
 
 
 
@@ -254,8 +260,8 @@ app.post('/twilioForm', xssService.sanitize, function (req, res) {
        });
    });
 
-   app.get('/pullComments', function(req, res){
-       commentCollection.find().toArray(function(err, docs){
+   app.get('/comments', function(req, res){
+       commentCollection.find({ discussionId : req.headers.id }).toArray(function(err, docs){
            if (err){
                throw err;
                res.sendStatus(500);
@@ -268,29 +274,30 @@ app.post('/twilioForm', xssService.sanitize, function (req, res) {
        })
    })
 
-// client.messages
-//     .create({
-//         to: '+13232026452',
-//         from: '+18556495866 ',
-//         body: 'Test Message',
-//     })
-//     .then(message => console.log(message.sid));
+   app.post('/blogPost', xssService.sanitize, function (req, res){
+       var newBlog = new BlogForm(req.body);
+       newBlog.save(function (err, product){
+           if(err) throw err;
+           console.log('Blog Added');
+            res.status(200).send({
+                type: true,
+                data: 'Blog has been saved'
+            });
+       });
+   });
 
+
+    app.get('/blogPost', function (req, res){
+        var id = req.headers.headerid
+        id = mongoose.Types.ObjectId(id)
+        BlogForm.findOne({_id: id}, function(err, data, next){
+            if(err) throw err;
+            console.log(data);
+            res.status(200).send(data);
+        })
+    })
 
 
 app.listen(port, function () {
     console.log('listening on port: ', port);
 });
-
-
-
-
-
- // var newUser = new User({
-    //     firstname: 'jose',
-    //     lastname: 'santana',
-    //     dob: '05/07/01',
-    //     email: 'jose.santana.simontech@gmail.com',
-    //     password: 'ilovebio',
-    // })
-    // newUser.save();
